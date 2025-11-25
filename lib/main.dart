@@ -1,9 +1,14 @@
+// El paquete HTTP es necesario para las llamadas API
 import 'package:flutter/material.dart';
+import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
 
-// Definimos los posibles estados de la manzana para la simulación
+// Definimos los posibles estados (se usan como claves en el JSON)
 enum AppleCondition {
-  ripe, // Madura
-  spoiled // Malograda
+  good, // Buen estado
+  spoiled, // Mal estado
+  unknown // Estado inicial o error
 }
 
 void main() {
@@ -19,133 +24,264 @@ class MyApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Clasificador de Manzanas Simulado', // Nombre de la aplicación
-      debugShowCheckedModeBanner: false, // Oculta la etiqueta de debug
+      title: 'Dashboard Clasificador de Frutas',
+      debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // Configuración básica del tema
         primarySwatch: Colors.green, 
         useMaterial3: true,
       ),
-      // La página de inicio es nuestra pantalla de estado
-      home: const AppleStatusScreen(), 
+      home: const AppleStatsDashboard(), 
     );
   }
 }
 
 // ----------------------------------------------------
-// 2. Pantalla de Estado del Clasificador (StatefulWidget)
+// 2. Dashboard de Estadísticas (StatefulWidget)
 // ----------------------------------------------------
-class AppleStatusScreen extends StatefulWidget {
-  const AppleStatusScreen({super.key});
+class AppleStatsDashboard extends StatefulWidget {
+  const AppleStatsDashboard({super.key});
 
   @override
-  State<AppleStatusScreen> createState() => _AppleStatusScreenState();
+  State<AppleStatsDashboard> createState() => _AppleStatsDashboardState();
 }
 
-class _AppleStatusScreenState extends State<AppleStatusScreen> {
-  // Variables de Estado Local
-  AppleCondition _currentCondition = AppleCondition.ripe; // Empieza como Madura
+class _AppleStatsDashboardState extends State<AppleStatsDashboard> {
+  // --- CONFIGURACIÓN AWS (REEMPLAZAR) ---
+  // ¡IMPORTANTE! Reemplaza esto con la URL de salida 'StatsApiUrl' de CloudFormation
+  final String _statsApiUrl = "https://TU_API_GATEWAY_ID.execute-api.REGION.amazonaws.com/dev/stats"; 
 
-  // Función para alternar el estado (simula el dato de la nube)
-  void _toggleCondition() {
-    setState(() {
-      if (_currentCondition == AppleCondition.ripe) {
-        _currentCondition = AppleCondition.spoiled;
-      } else {
-        _currentCondition = AppleCondition.ripe;
-      }
+  // Variables de Estado (Contadores leídos de DynamoDB)
+  int _totalCount = 0;
+  Map<String, int> _counts = {
+    'Buen Estado': 0,
+    'Mal Estado': 0,
+    'UNKNOWN': 0
+  };
+  bool _isLoading = true;
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    // Inicia la primera carga de datos
+    _fetchStatsFromAWS();
+    // Configura un temporizador para refrescar los datos cada 5 segundos
+    _timer = Timer.periodic(const Duration(seconds: 5), (timer) {
+      _fetchStatsFromAWS();
     });
   }
 
-  // Lógica para determinar el texto y el color basado en el estado local
-  String get _appleStatusText {
-    return _currentCondition == AppleCondition.ripe ? 'MADURO' : 'MALOGRADA';
+  @override
+  void dispose() {
+    // Detiene el temporizador cuando el widget es destruido
+    _timer?.cancel();
+    super.dispose();
   }
 
-  Color get _statusColor {
-    return _currentCondition == AppleCondition.ripe 
-        ? Colors.green.shade800 // Verde para Madura
-        : Colors.red.shade800; // Rojo para Malograda
+  // --- LÓGICA DE CONEXIÓN HTTP A AWS ---
+  Future<void> _fetchStatsFromAWS() async {
+    try {
+      final response = await http.get(Uri.parse(_statsApiUrl));
+
+      if (response.statusCode == 200) {
+        // La Lambda devuelve el cuerpo como una cadena JSON, por eso usamos jsonDecode
+        final data = jsonDecode(response.body); 
+        // El cuerpo real es una cadena JSON dentro de otra cadena JSON debido a la integración proxy de Lambda/API Gateway
+        final payload = jsonDecode(data); 
+
+        setState(() {
+          _totalCount = payload['total_items'] ?? 0;
+          // Conversión segura del Map
+          final rawCounts = payload['classification_counts'] as Map<String, dynamic>?; 
+          _counts = rawCounts?.map((k, v) => MapEntry(k, v as int)) ?? {};
+          _isLoading = false;
+        });
+
+      } else {
+        throw Exception('Fallo la carga de estadísticas. Código: ${response.statusCode}');
+      }
+    } catch (e) {
+      // Solución a los errores de 'void' y 'not_enough_positional_arguments'.
+      // debugPrint registra el error.
+      debugPrint('Error al conectar con AWS o parsear datos: $e'); 
+      // setState actualiza la UI.
+      setState(() {
+        _isLoading = false;
+      });
+    }
+  }
+
+  // Lógica para determinar el COLOR BASE (MaterialColor) para el énfasis
+  MaterialColor get _baseEmphasisColor {
+    if (_totalCount == 0) return Colors.grey;
+    
+    double spoiledPercent = (_counts['Mal Estado'] ?? 0) / _totalCount;
+
+    if (spoiledPercent > 0.10) {
+      return Colors.red; // Retorna la familia de color MaterialColor
+    } else if (spoiledPercent > 0.03) {
+      return Colors.orange; // Retorna la familia de color MaterialColor
+    } else {
+      return Colors.green; // Retorna la familia de color MaterialColor
+    }
+  }
+
+  // Lógica para determinar el color de énfasis (SHADE 700 para la AppBar/Tarjeta principal)
+  Color get _emphasisColor {
+    return _baseEmphasisColor.shade700;
   }
 
   // ----------------------------------------------------
-  // 3. Diseño de la Interfaz de Usuario
+  // 3. Diseño del Dashboard
   // ----------------------------------------------------
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Detección de estado de manzana'),
-        backgroundColor: _statusColor,
+        // Usa el shade 700 para el AppBar
+        title: const Text('Dashboard de Clasificación (AWS Live)'),
+        backgroundColor: _emphasisColor, 
         foregroundColor: Colors.white,
         elevation: 4,
-        // Eliminamos el botón de refrescar, ya que no hay conexión a la nube
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _isLoading ? null : _fetchStatsFromAWS, // Refresca manualmente
+          ),
+        ],
       ),
-      body: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: <Widget>[
-              const Text(
-                'Estado de la Manzana:',
-                style: TextStyle(
-                  fontSize: 24, 
-                  fontWeight: FontWeight.w300, 
-                  color: Colors.black87
-                ),
-              ),
-              const SizedBox(height: 40),
-              
-              // Contenedor principal con el estado y color de fondo
-              Container(
-                width: MediaQuery.of(context).size.width * 0.8, // 80% del ancho
-                padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 20),
-                decoration: BoxDecoration(
-                  color: _statusColor,
-                  borderRadius: BorderRadius.circular(20), 
-                  boxShadow: [
-                    BoxShadow(
-                      color: _statusColor.withValues(),
-                      blurRadius: 20,
-                      offset: const Offset(0, 10),
-                    ),
-                  ],
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _appleStatusText,
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 40,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                    letterSpacing: 1.5,
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : SingleChildScrollView(
+              padding: const EdgeInsets.all(20.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: <Widget>[
+                  // Tarjeta de Resumen Total
+                  _buildTotalCard(),
+                  const SizedBox(height: 20),
+                  
+                  // Tarjetas de Clasificación
+                  _buildClassificationCard('Buen Estado', Colors.green),
+                  const SizedBox(height: 15),
+                  _buildClassificationCard('Mal Estado', Colors.red),
+                  const SizedBox(height: 15),
+                  
+                  // Información de Conexión
+                  Text(
+                    'Última actualización: ${DateTime.now().toLocal().toString().substring(11, 19)}',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
                   ),
-                ),
+                ],
               ),
-              
-              const SizedBox(height: 40),
-              
-              // Indicador del modo de simulación
-              Text(
-                'Toca el botón flotante para alternar el estado.',
-                style: TextStyle(fontSize: 14, color: Colors.grey.shade600),
-              ),
+            ),
+    );
+  }
+
+  // Widget para la tarjeta de resumen total
+  Widget _buildTotalCard() {
+    return Card(
+      elevation: 6,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
+      child: Container(
+        padding: const EdgeInsets.all(25),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(15),
+          gradient: LinearGradient(
+            colors: [
+              _emphasisColor, // Usa el shade 700
+              // SOLUCIÓN: Accede a shade500 desde _baseEmphasisColor (MaterialColor)
+              _baseEmphasisColor.shade500, 
             ],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
           ),
         ),
+        child: Column(
+          children: [
+            const Text(
+              'TOTAL DE FRUTAS PROCESADAS',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w400,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              _totalCount.toString(),
+              style: const TextStyle(
+                fontSize: 70,
+                fontWeight: FontWeight.bold,
+                color: Colors.white,
+                letterSpacing: 2,
+              ),
+            ),
+          ],
+        ),
       ),
-      
-      // Botón flotante para simular la nueva lectura
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _toggleCondition,
-        label: Text(_currentCondition == AppleCondition.ripe ? 'Simular MALOGRADA' : 'Simular MADURO'),
-        icon: Icon(_currentCondition == AppleCondition.ripe ? Icons.bug_report : Icons.check_circle),
-        backgroundColor: _statusColor,
-        foregroundColor: Colors.white,
+    );
+  }
+
+  // Widget para las tarjetas individuales de clasificación
+  Widget _buildClassificationCard(String label, MaterialColor color) {
+    final count = _counts[label] ?? 0;
+    final percentage = _totalCount > 0 ? (count / _totalCount) * 100 : 0.0;
+
+    return Card(
+      elevation: 4,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      child: Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  label.toUpperCase(),
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.bold,
+                    color: color.shade800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  'Porcentaje del total',
+                  style: TextStyle(
+                    fontSize: 14,
+                    color: Colors.grey.shade600,
+                  ),
+                ),
+              ],
+            ),
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                Text(
+                  count.toString(),
+                  style: TextStyle(
+                    fontSize: 36,
+                    fontWeight: FontWeight.w900,
+                    color: color.shade700,
+                  ),
+                ),
+                Text(
+                  '${percentage.toStringAsFixed(1)}%',
+                  style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: color.shade500,
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
       ),
-      floatingActionButtonLocation: FloatingActionButtonLocation.centerFloat,
     );
   }
 }

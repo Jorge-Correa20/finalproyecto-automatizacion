@@ -19,7 +19,9 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.10.1
+  # Esto le dice a Dart que acepte cualquier versión entre 3.0.0 (o similar) y 4.0.0 (futuro)
+  # Si tu código es muy antiguo, quizás debas empezar con 2.18.0.
+  sdk: ">=3.0.0 <4.0.0"
 
 # Dependencies specify other packages that your package needs in order to work.
 # To automatically upgrade your package dependencies to the latest versions
@@ -30,6 +32,8 @@ environment:
 dependencies:
   flutter:
     sdk: flutter
+  # Dejamos la versión de http simple para que el sistema la resuelva:
+  http: ^1.1.0
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
