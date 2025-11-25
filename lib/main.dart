@@ -126,7 +126,7 @@ class _AppleStatsDashboardState extends State<AppleStatsDashboard> {
     }
   }
 
-  // Lógica para determinar el color de énfasis (SHADE 700 para la AppBar/Tarjeta principal)
+  // Lógica para determinar el color de énfasis (SHADE 700 para el AppBar/Tarjeta principal)
   Color get _emphasisColor {
     return _baseEmphasisColor.shade700;
   }
@@ -191,7 +191,7 @@ class _AppleStatsDashboardState extends State<AppleStatsDashboard> {
           gradient: LinearGradient(
             colors: [
               _emphasisColor, // Usa el shade 700
-              // SOLUCIÓN: Accede a shade500 desde _baseEmphasisColor (MaterialColor)
+              // Accede a shade500 desde _baseEmphasisColor (MaterialColor)
               _baseEmphasisColor.shade500, 
             ],
             begin: Alignment.topLeft,
