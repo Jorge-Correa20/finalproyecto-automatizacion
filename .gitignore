@@ -41,3 +41,49 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+-------------------------------------------------------------------
+
+ARCHIVOS GENERALES IGNORADOS
+
+-------------------------------------------------------------------
+
+.DS_Store
+.vscode/
+
+-------------------------------------------------------------------
+
+1. IGNORAR ENTORNO VIRTUAL DE PYTHON
+
+Esto resuelve el error de 100MB (cv2, torch)
+
+-------------------------------------------------------------------
+
+env/
+venv/
+pycache/
+*.pyc
+*.pyd
+
+-------------------------------------------------------------------
+
+2. IGNORAR BUILD DE FLUTTER
+
+Esto es vital para las apps Flutter/Dart/Web
+
+-------------------------------------------------------------------
+
+.dart_tool/
+.packages
+/build/
+.flutter-plugins
+.flutter-plugins-dependencies
+.dart-tool/
+
+-------------------------------------------------------------------
+
+3. ARCHIVOS DE RESULTADOS YOLO
+
+-------------------------------------------------------------------
+
+runs/
+weights/
